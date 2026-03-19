@@ -290,12 +290,15 @@ textarea::placeholder { color:var(--muted); }
   }
 
   // ── Download ──────────────────────────────────────
+  // 分批下載策略：每 CHUNK_SIZE 個片段存一個檔案，避免 iOS 記憶體爆炸
+  var CHUNK_SIZE = 30; // 每批 30 個片段（約 30-60MB）
+
   async function startDownload() {
     if (busy) return;
     busy = true;
     cancelled = false;
 
-    var fname = ($id('fname').value || 'video') + '.mp4';
+    var baseName = $id('fname').value || 'video';
     $id('prog').classList.remove('hidden');
     $id('dlBtn').disabled = true;
     $id('cancelBtn').classList.remove('hidden');
@@ -305,10 +308,8 @@ textarea::placeholder { color:var(--muted); }
     try {
       addLog('開始解析 m3u8...', 'info');
 
-      // Fetch m3u8
       var m3u8Text = await fetchText(bestUrl);
 
-      // Master playlist?
       if (m3u8Text.includes('EXT-X-STREAM-INF')) {
         addLog('Master playlist，選最高畫質子串流...', 'info');
         var subUrl = parseMaster(m3u8Text, bestUrl);
@@ -321,30 +322,62 @@ textarea::placeholder { color:var(--muted); }
       if (!segs.length) throw new Error('未找到 TS 片段');
 
       $id('st-total').textContent = segs.length;
-      addLog('找到 ' + segs.length + ' 個片段，開始下載...', 'ok');
+      var totalChunks = Math.ceil(segs.length / CHUNK_SIZE);
+      var multiPart = totalChunks > 1;
 
-      var buffers = [];
-      var totalBytes = 0;
-
-      for (var i = 0; i < segs.length; i++) {
-        if (cancelled) throw new Error('CANCELLED');
-        var buf = await fetchBin(segs[i]);
-        buffers.push(new Uint8Array(buf));
-        totalBytes += buf.byteLength;
-        $id('st-done').textContent = i + 1;
-        $id('st-mb').textContent = (totalBytes / 1048576).toFixed(1);
-        var pct = Math.round(5 + (i + 1) / segs.length * 85);
-        setProg(pct, '片段 ' + (i + 1) + ' / ' + segs.length);
+      if (multiPart) {
+        addLog('影片較長，將分成 ' + totalChunks + ' 個檔案下載（依序合併）', 'warn');
+        addLog('每個檔案下載完會自動彈出儲存，請依序儲存', 'info');
+      } else {
+        addLog('找到 ' + segs.length + ' 個片段，開始下載...', 'ok');
       }
 
-      addLog('下載完成，轉換為 MP4...', 'info');
-      setProg(92, '合併轉換...');
+      var totalBytes = 0;
+      var doneSegs = 0;
 
-      var mp4Blob = remux(buffers);
-      setProg(98, '準備下載...');
-      saveBlob(mp4Blob, fname);
-      setProg(100, '✓ 完成！');
-      addLog('🎉 下載完成！' + (mp4Blob.size / 1048576).toFixed(1) + ' MB', 'ok');
+      for (var chunk = 0; chunk < totalChunks; chunk++) {
+        if (cancelled) throw new Error('CANCELLED');
+
+        var start = chunk * CHUNK_SIZE;
+        var end = Math.min(start + CHUNK_SIZE, segs.length);
+        var chunkSegs = segs.slice(start, end);
+        var buffers = [];
+
+        for (var i = 0; i < chunkSegs.length; i++) {
+          if (cancelled) throw new Error('CANCELLED');
+          var buf = await fetchBin(chunkSegs[i]);
+          buffers.push(new Uint8Array(buf));
+          totalBytes += buf.byteLength;
+          doneSegs++;
+          $id('st-done').textContent = doneSegs;
+          $id('st-mb').textContent = (totalBytes / 1048576).toFixed(1);
+          var pct = Math.round(5 + doneSegs / segs.length * 85);
+          setProg(pct, '片段 ' + doneSegs + ' / ' + segs.length);
+        }
+
+        // 這批下載完，立刻觸發儲存，釋放記憶體
+        setProg(Math.round(5 + doneSegs / segs.length * 85), '合併第 ' + (chunk+1) + ' 部分...');
+        var blob = remux(buffers);
+        buffers = []; // 釋放記憶體
+
+        var fname = multiPart
+          ? baseName + '_part' + (chunk + 1) + '.ts'
+          : baseName + '.mp4';
+
+        saveBlob(blob, fname);
+        addLog('✓ 第 ' + (chunk+1) + '/' + totalChunks + ' 部分已下載（' + (blob.size/1048576).toFixed(1) + ' MB）', 'ok');
+
+        // 給 iOS 一點時間釋放記憶體
+        await sleep(500);
+      }
+
+      setProg(100, '✓ 全部完成！');
+      if (multiPart) {
+        addLog('🎉 全部完成！共 ' + totalChunks + ' 個檔案', 'ok');
+        addLog('若需要合併，可用電腦的 VLC 或 ffmpeg 合併', 'info');
+      } else {
+        addLog('🎉 下載完成！' + (totalBytes/1048576).toFixed(1) + ' MB', 'ok');
+      }
 
     } catch (e) {
       if (e.message === 'CANCELLED') {
@@ -361,6 +394,8 @@ textarea::placeholder { color:var(--muted); }
     $id('dlBtn').disabled = false;
     $id('cancelBtn').classList.add('hidden');
   }
+
+  function sleep(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
 
   // ── m3u8 helpers ─────────────────────────────────
   function parseMaster(text, base) {
