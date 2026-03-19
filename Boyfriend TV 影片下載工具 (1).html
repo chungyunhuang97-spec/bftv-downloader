@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stream Grabber</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Bebas+Neue&display=swap');
+:root {
+  --bg: #0d0d18; --card: #13131f; --border: #1f1f38; --b2: #2c2c4a;
+  --accent: #7c6fff; --glow: #a89fff; --green: #3ddc84;
+  --red: #ff5c5c; --yellow: #ffcc00;
+  --text: #e4e2f8; --muted: #58547a; --dim: #1c1c30;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; padding-bottom:60px; }
+.wrap { max-width:600px; margin:0 auto; padding:28px 16px; }
+h1 { font-family:'Bebas Neue',sans-serif; font-size:42px; letter-spacing:3px; line-height:1; margin-bottom:4px; }
+h1 em { color:var(--glow); font-style:normal; }
+.sub { font-size:11px; color:var(--muted); line-height:1.8; margin-bottom:22px; }
+
+/* Buttons */
+.btn { display:block; width:100%; padding:15px; border:none; border-radius:2px;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:700;
+  letter-spacing:1px; text-transform:uppercase; cursor:pointer;
+  margin-bottom:8px; text-align:center; -webkit-appearance:none; }
+.btn:active { transform:scale(.98); }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:active { background:var(--glow); }
+.btn-secondary { background:rgba(160,159,255,.1); color:var(--glow); border:1px solid rgba(160,159,255,.25); }
+.btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+.btn-ghost:active { color:var(--text); }
+.btn-download { background:var(--green); color:#111; font-size:14px; padding:18px; }
+.btn-download:disabled { background:var(--dim); color:var(--muted); cursor:not-allowed; transform:none; }
+.btn-copy { background:var(--dim); color:var(--muted); border:1px solid var(--b2); }
+.btn-copy.ok { color:var(--green); border-color:rgba(61,220,132,.3); }
+.btn-cancel { background:rgba(255,92,92,.12); color:var(--red); border:1px solid rgba(255,92,92,.25); }
+
+textarea { width:100%; background:rgba(0,0,0,.4); border:1px solid var(--b2);
+  color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:11px;
+  padding:14px; resize:none; height:130px; outline:none; line-height:1.7;
+  border-radius:2px; -webkit-appearance:none; display:block; margin-bottom:8px; }
+textarea:focus { border-color:var(--accent); }
+textarea::placeholder { color:var(--muted); }
+
+.err { background:rgba(255,92,92,.07); border:1px solid rgba(255,92,92,.25);
+  color:var(--red); padding:12px 14px; font-size:11px; line-height:1.8;
+  margin-bottom:8px; border-radius:2px; }
+
+/* Result card */
+.rcard { background:var(--card); border:1px solid var(--accent); border-radius:2px; overflow:hidden; margin-bottom:12px; }
+.rcard-head { background:rgba(124,111,255,.1); padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
+.rcard-q { font-family:'Bebas Neue',sans-serif; font-size:32px; line-height:1; color:var(--glow); }
+.rcard-type { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); border:1px solid var(--b2); padding:2px 8px; border-radius:2px; }
+.rcard-url { padding:12px 16px; font-size:10px; color:var(--muted); word-break:break-all; line-height:1.8; border-bottom:1px solid var(--border); }
+.rcard-actions { padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+
+/* Filename row */
+.fname-row { display:flex; margin-bottom:8px; }
+.fname-pre { background:var(--dim); border:1px solid var(--b2); border-right:none; padding:11px 12px; font-size:11px; color:var(--muted); white-space:nowrap; border-radius:2px 0 0 2px; }
+.fname-row input { flex:1; background:var(--bg); border:1px solid var(--b2); color:var(--text);
+  font-family:'IBM Plex Mono',monospace; font-size:11px; padding:11px 12px; outline:none; -webkit-appearance:none; }
+.fname-row input:focus { border-color:var(--accent); }
+.fname-suf { background:var(--dim); border:1px solid var(--b2); border-left:none; padding:11px 12px; font-size:11px; color:var(--muted); white-space:nowrap; border-radius:0 2px 2px 0; }
+
+/* Progress */
+.prog-wrap { margin-top:4px; }
+.prog-header { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-bottom:8px; }
+.prog-header span { color:var(--text); }
+.prog-track { height:3px; background:var(--dim); margin-bottom:12px; overflow:hidden; border-radius:2px; }
+.prog-fill { height:100%; width:0%; background:linear-gradient(90deg, var(--accent), var(--glow)); transition:width .3s ease; }
+.stats { display:flex; gap:1px; margin-bottom:12px; }
+.stat { flex:1; background:var(--dim); border:1px solid var(--border); padding:8px; text-align:center; }
+.stat-v { font-family:'Bebas Neue',sans-serif; font-size:20px; color:var(--glow); line-height:1; }
+.stat-l { font-size:9px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:2px; }
+.log { background:var(--bg); border:1px solid var(--border); padding:10px 12px;
+  height:110px; overflow-y:auto; font-size:10px; line-height:2.2; color:var(--muted); border-radius:2px; }
+.log .ok { color:var(--green); }
+.log .err { color:var(--red); }
+.log .info { color:var(--glow); }
+.log .warn { color:var(--yellow); }
+
+/* Other qualities */
+.others-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);
+  margin-bottom:8px; display:flex; align-items:center; gap:10px; }
+.others-label::after { content:''; flex:1; height:1px; background:var(--border); }
+.orow { display:flex; align-items:center; gap:12px; padding:11px 14px; margin-bottom:6px;
+  background:var(--card); border:1px solid var(--b2); border-radius:2px; cursor:pointer; }
+.orow:active { border-color:var(--accent); }
+.orow-q { font-family:'Bebas Neue',sans-serif; font-size:20px; color:var(--muted); min-width:50px; text-align:center; }
+.orow-url { font-size:10px; color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.orow-tag { font-size:9px; color:var(--muted); border:1px solid var(--border); padding:1px 6px; border-radius:2px; white-space:nowrap; }
+
+/* Toast */
+.toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(8px);
+  background:var(--card); border:1px solid var(--glow); color:var(--glow);
+  font-size:11px; padding:11px 20px; border-radius:2px; opacity:0; transition:all .25s;
+  pointer-events:none; white-space:nowrap; z-index:999; max-width:90vw; text-align:center; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.hidden { display:none !important; }
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--b2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>STREAM <em>GRAB</em></h1>
+  <p class="sub">貼上 HTML → 自動抓串流 → 直接下載 MP4</p>
+
+  <!-- Phase A: Paste -->
+  <div id="pa">
+    <button class="btn btn-secondary" id="pasteBtn" type="button">📋 一鍵貼上原始碼</button>
+    <textarea id="src" placeholder="或長按這裡手動貼上 HTML..."></textarea>
+    <div class="err hidden" id="err">未找到串流連結，請確認已完整複製頁面 HTML。</div>
+    <button class="btn btn-primary" id="scanBtn" type="button">🔍 分析並提取連結</button>
+    <button class="btn btn-ghost" id="clearBtn" type="button">清除</button>
+  </div>
+
+  <!-- Phase B: Result + Download -->
+  <div id="pb" class="hidden">
+    <div class="rcard">
+      <div class="rcard-head">
+        <span class="rcard-q" id="rq">—</span>
+        <span class="rcard-type" id="rt">—</span>
+      </div>
+      <div class="rcard-url" id="ru">—</div>
+      <div class="rcard-actions">
+        <!-- Filename -->
+        <div class="fname-row">
+          <div class="fname-pre">檔名</div>
+          <input type="text" id="fname" value="video">
+          <div class="fname-suf">.mp4</div>
+        </div>
+        <!-- Download button -->
+        <button class="btn btn-download" id="dlBtn" type="button">⬇ 下載 MP4</button>
+        <button class="btn btn-copy" id="copyBtn" type="button">📋 複製串流連結</button>
+      </div>
+    </div>
+
+    <!-- Progress (hidden until download starts) -->
+    <div id="prog" class="hidden">
+      <div class="stats">
+        <div class="stat"><div class="stat-v" id="st-total">—</div><div class="stat-l">片段</div></div>
+        <div class="stat"><div class="stat-v" id="st-done">0</div><div class="stat-l">已下載</div></div>
+        <div class="stat"><div class="stat-v" id="st-mb">0</div><div class="stat-l">MB</div></div>
+      </div>
+      <div class="prog-wrap">
+        <div class="prog-header"><span id="prog-lbl">準備中...</span><span id="prog-pct">0%</span></div>
+        <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      </div>
+      <div class="log" id="log"></div>
+      <button class="btn btn-cancel hidden" id="cancelBtn" type="button" style="margin-top:8px">✕ 取消</button>
+    </div>
+
+    <!-- Other qualities -->
+    <div id="ow"></div>
+    <button class="btn btn-ghost" id="backBtn" type="button" style="margin-top:8px">← 重新貼上</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var bestUrl = '', streams = [], cancelled = false, busy = false;
+
+  function $id(id) { return document.getElementById(id); }
+
+  // ── Init ─────────────────────────────────────────
+  function init() {
+    $id('pasteBtn').addEventListener('click', doPaste);
+    $id('scanBtn').addEventListener('click', doScan);
+    $id('clearBtn').addEventListener('click', doClear);
+    $id('backBtn').addEventListener('click', goBack);
+    $id('dlBtn').addEventListener('click', startDownload);
+    $id('copyBtn').addEventListener('click', doCopy);
+    $id('cancelBtn').addEventListener('click', function () { cancelled = true; });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else { init(); }
+
+  // ── Paste ─────────────────────────────────────────
+  async function doPaste() {
+    try {
+      var t = await navigator.clipboard.readText();
+      if (!t.trim()) { showToast('剪貼簿是空的'); return; }
+      $id('src').value = t;
+      showToast('已貼上 ' + Math.round(t.length / 1000) + 'KB');
+    } catch (e) { showToast('請長按輸入框手動貼上'); }
+  }
+
+  // ── Scan ──────────────────────────────────────────
+  function doScan() {
+    var html = $id('src').value;
+    $id('err').classList.add('hidden');
+    if (!html.trim()) { showToast('請先貼上 HTML'); return; }
+    var found = extract(html);
+    if (!found.length) { $id('err').classList.remove('hidden'); return; }
+    streams = found.slice(0, 4);
+    bestUrl = streams[0].url;
+    render(streams[0], streams.slice(1));
+  }
+
+  // ── Extract streams ───────────────────────────────
+  function extract(html) {
+    var results = [], seen = {};
+
+    // Method 1: boyfriendtv sources array
+    var re1 = /\{"src":"(https:[^"]+\.mp4[^"]*)"[^}]{0,200}?"desc":"([^"]+)"/g;
+    var m;
+    while ((m = re1.exec(html)) !== null) {
+      var url = m[1].replace(/\\\//g, '/');
+      var desc = m[2].toUpperCase();
+      if (!seen[url]) {
+        seen[url] = 1;
+        results.push({ url: url, quality: desc, score: qScore(desc), type: 'HLS' });
+      }
+    }
+
+    // Method 2: generic fallback
+    if (!results.length) {
+      var clean = html.replace(/\\u002[Ff]/g, '/').replace(/\\\//g, '/');
+      var re2 = /["'`](https?:\/\/[^"'`\s<>]{20,}\.(?:mp4|m3u8)[^"'`\s<>]*)/gi;
+      while ((m = re2.exec(clean)) !== null) {
+        var u = m[1].replace(/[,;)}\]\\]+$/, '').trim();
+        if (!u.startsWith('http') || seen[u]) continue;
+        if (/thumb|poster|\.jpg|\.png/i.test(u)) continue;
+        seen[u] = 1;
+        var q = guessQ(u);
+        results.push({ url: u, quality: q, score: qScore(q), type: 'HLS/MP4' });
+      }
+    }
+
+    results.sort(function (a, b) { return a.score - b.score; });
+    var byQ = {}, out = [];
+    results.forEach(function (r) { if (!byQ[r.quality]) { byQ[r.quality] = 1; out.push(r); } });
+    return out;
+  }
+
+  function guessQ(url) {
+    if (/\/hd_/.test(url)) return '1080P';
+    if (/\/hq_/.test(url)) return '720P';
+    if (/\/m_[a-z0-9]/.test(url)) return '480P';
+    if (/\/lq_/.test(url)) return '360P';
+    var m = url.match(/[_\-\/](2160|1080|720|480|360|240)[pP]?(?=[_\-\/\.\?]|$)/);
+    if (m) return m[1] + 'P';
+    return 'STREAM';
+  }
+
+  function qScore(q) {
+    return { '4K': 0, '2160P': 0, '1080P': 1, '720P': 2, '480P': 3, '360P': 4, '240P': 5, 'STREAM': 6 }[q] || 7;
+  }
+
+  // ── Render ────────────────────────────────────────
+  function render(best, others) {
+    $id('pa').classList.add('hidden');
+    $id('pb').classList.remove('hidden');
+    $id('rq').textContent = best.quality;
+    $id('rt').textContent = best.type;
+    $id('ru').textContent = best.url;
+
+    var wrap = $id('ow');
+    wrap.innerHTML = '';
+    if (others.length) {
+      var lbl = document.createElement('div');
+      lbl.className = 'others-label';
+      lbl.textContent = '其他畫質';
+      wrap.appendChild(lbl);
+      others.forEach(function (s) {
+        var d = document.createElement('div');
+        d.className = 'orow';
+        d.innerHTML = '<div class="orow-q">' + s.quality + '</div>'
+          + '<div class="orow-url">' + s.url + '</div>'
+          + '<div class="orow-tag">' + s.type + '</div>';
+        d.addEventListener('click', function () {
+          bestUrl = s.url;
+          $id('rq').textContent = s.quality;
+          $id('rt').textContent = s.type;
+          $id('ru').textContent = s.url;
+          showToast('已切換至 ' + s.quality);
+        });
+        wrap.appendChild(d);
+      });
+    }
+  }
+
+  // ── Download ──────────────────────────────────────
+  async function startDownload() {
+    if (busy) return;
+    busy = true;
+    cancelled = false;
+
+    var fname = ($id('fname').value || 'video') + '.mp4';
+    $id('prog').classList.remove('hidden');
+    $id('dlBtn').disabled = true;
+    $id('cancelBtn').classList.remove('hidden');
+    $id('log').innerHTML = '';
+    setProg(0, '解析串流...');
+
+    try {
+      addLog('開始解析 m3u8...', 'info');
+
+      // Fetch m3u8
+      var m3u8Text = await fetchText(bestUrl);
+
+      // Master playlist?
+      if (m3u8Text.includes('EXT-X-STREAM-INF')) {
+        addLog('Master playlist，選最高畫質子串流...', 'info');
+        var subUrl = parseMaster(m3u8Text, bestUrl);
+        if (!subUrl) throw new Error('無法解析子串流');
+        bestUrl = subUrl;
+        m3u8Text = await fetchText(subUrl);
+      }
+
+      var segs = parseSegs(m3u8Text, bestUrl);
+      if (!segs.length) throw new Error('未找到 TS 片段');
+
+      $id('st-total').textContent = segs.length;
+      addLog('找到 ' + segs.length + ' 個片段，開始下載...', 'ok');
+
+      var buffers = [];
+      var totalBytes = 0;
+
+      for (var i = 0; i < segs.length; i++) {
+        if (cancelled) throw new Error('CANCELLED');
+        var buf = await fetchBin(segs[i]);
+        buffers.push(new Uint8Array(buf));
+        totalBytes += buf.byteLength;
+        $id('st-done').textContent = i + 1;
+        $id('st-mb').textContent = (totalBytes / 1048576).toFixed(1);
+        var pct = Math.round(5 + (i + 1) / segs.length * 85);
+        setProg(pct, '片段 ' + (i + 1) + ' / ' + segs.length);
+      }
+
+      addLog('下載完成，轉換為 MP4...', 'info');
+      setProg(92, '合併轉換...');
+
+      var mp4Blob = remux(buffers);
+      setProg(98, '準備下載...');
+      saveBlob(mp4Blob, fname);
+      setProg(100, '✓ 完成！');
+      addLog('🎉 下載完成！' + (mp4Blob.size / 1048576).toFixed(1) + ' MB', 'ok');
+
+    } catch (e) {
+      if (e.message === 'CANCELLED') {
+        addLog('已取消', 'warn');
+        setProg(0, '已取消');
+      } else {
+        addLog('失敗：' + e.message, 'err');
+        addLog('請點「複製串流連結」後用 m3u8 Mpjex 下載', 'warn');
+        setProg(0, '下載失敗');
+      }
+    }
+
+    busy = false;
+    $id('dlBtn').disabled = false;
+    $id('cancelBtn').classList.add('hidden');
+  }
+
+  // ── m3u8 helpers ─────────────────────────────────
+  function parseMaster(text, base) {
+    var lines = text.split('\n');
+    var best = null, bestBw = 0;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('#EXT-X-STREAM-INF')) {
+        var bwM = lines[i].match(/BANDWIDTH=(\d+)/);
+        var bw = bwM ? +bwM[1] : 0;
+        var uri = (lines[i + 1] || '').trim();
+        if (uri && !uri.startsWith('#') && bw >= bestBw) { bestBw = bw; best = uri; }
+      }
+    }
+    if (!best) return null;
+    return best.startsWith('http') ? best : new URL(best, base).href;
+  }
+
+  function parseSegs(text, base) {
+    return text.split('\n')
+      .map(function (l) { return l.trim(); })
+      .filter(function (l) { return l && !l.startsWith('#'); })
+      .map(function (l) { return l.startsWith('http') ? l : new URL(l, base).href; });
+  }
+
+  // ── Fetch ─────────────────────────────────────────
+  async function fetchText(url) {
+    var r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  }
+
+  async function fetchBin(url) {
+    var r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.arrayBuffer();
+  }
+
+  // ── TS → MP4 remux (mux.js) ───────────────────────
+  function remux(chunks) {
+    // mux.js が利用可能な場合は MP4 に変換、そうでなければ TS のまま
+    if (typeof muxjs !== 'undefined') {
+      try {
+        var mp4Segs = [];
+        var tx = new muxjs.mp4.Transmuxer();
+        tx.on('data', function (seg) {
+          if (seg.initSegment) mp4Segs.push(seg.initSegment);
+          mp4Segs.push(seg.data);
+        });
+        // sync flush
+        var done = false;
+        tx.on('done', function () { done = true; });
+        for (var c of chunks) tx.push(c);
+        tx.flush();
+        if (done && mp4Segs.length) {
+          var total = mp4Segs.reduce(function (s, b) { return s + b.byteLength; }, 0);
+          var out = new Uint8Array(total);
+          var off = 0;
+          mp4Segs.forEach(function (s) { out.set(new Uint8Array(s), off); off += s.byteLength; });
+          addLog('已轉換為 MP4 格式 ✓', 'ok');
+          return new Blob([out], { type: 'video/mp4' });
+        }
+      } catch (e) { /* fallback */ }
+    }
+    // Fallback: concat TS（VLC 可播放）
+    addLog('輸出為 TS 格式（VLC/MPC 可播放）', 'warn');
+    var total = chunks.reduce(function (s, c) { return s + c.length; }, 0);
+    var out = new Uint8Array(total);
+    var off = 0;
+    chunks.forEach(function (c) { out.set(c, off); off += c.length; });
+    return new Blob([out], { type: 'video/mp2t' });
+  }
+
+  // ── Save ──────────────────────────────────────────
+  function saveBlob(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 8000);
+  }
+
+  // ── Copy ──────────────────────────────────────────
+  function doCopy() {
+    copyUrl(bestUrl);
+    var btn = $id('copyBtn');
+    btn.textContent = '✓ 已複製！';
+    btn.classList.add('ok');
+    setTimeout(function () { btn.innerHTML = '📋 複製串流連結'; btn.classList.remove('ok'); }, 2500);
+    showToast('已複製到剪貼簿');
+  }
+
+  function copyUrl(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () { fbCopy(text); });
+    } else { fbCopy(text); }
+  }
+
+  function fbCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:1px;height:1px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  // ── Nav ───────────────────────────────────────────
+  function doClear() { $id('src').value = ''; $id('err').classList.add('hidden'); }
+
+  function goBack() {
+    $id('pb').classList.add('hidden');
+    $id('pa').classList.remove('hidden');
+    $id('prog').classList.add('hidden');
+    $id('dlBtn').disabled = false;
+    busy = false;
+  }
+
+  // ── UI helpers ────────────────────────────────────
+  function setProg(pct, label) {
+    $id('prog-fill').style.width = pct + '%';
+    $id('prog-pct').textContent = pct + '%';
+    $id('prog-lbl').textContent = label;
+  }
+
+  function addLog(msg, cls) {
+    var box = $id('log');
+    var d = document.createElement('div');
+    d.className = cls || '';
+    d.textContent = '› ' + msg;
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  var tt;
+  function showToast(msg) {
+    var t = $id('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(tt);
+    tt = setTimeout(function () { t.classList.remove('show'); }, 2800);
+  }
+})();
+</script>
+<!-- mux.js for TS→MP4 conversion -->
+<script src="https://cdn.jsdelivr.net/npm/mux.js@6.3.0/dist/mux.js"></script>
+</body>
+</html>
